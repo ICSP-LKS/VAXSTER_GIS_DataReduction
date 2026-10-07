@@ -1,0 +1,3 @@
+examples/
+*.pyc
+local_variables.py

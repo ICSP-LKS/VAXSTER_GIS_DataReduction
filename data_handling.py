@@ -1,14 +1,15 @@
 import numpy as np
+from datetime import date
 from scipy.optimize import curve_fit
-from os.path import join
+from os.path import join, isdir
+from os import makedirs
 import matplotlib.pyplot as plt
 from matplotlib.transforms import Affine2D
 from matplotlib.colors import LogNorm
 from matplotlib.collections import PathCollection
 from matplotlib.patches import Rectangle
-from matplotlib.layout_engine import ConstrainedLayoutEngine
 from PIL import Image
-from pandas import ExcelWriter, DataFrame
+import cv2
 
 def gaussian(x, x0, sigma, area, const):
     """
@@ -190,9 +191,9 @@ def calibrate_q_scale_missing_wedge(data,DB,dist,px_size,alpha,wavelength):
                     k_max = 1
                 for k in range(k_max):
                     delta_y = delta_y_down+k*px_size
-                    Q_mW_left = calculate_Q(alpha,missing_wedge_x_left,delta_y,dist,k_in,wavelength)
-                    Q_mW_right = calculate_Q(alpha,missing_wedge_x_right,delta_y,dist,k_in,wavelength)
-                    Q = calculate_Q(alpha,delta_x_left,delta_y,dist,k_in,wavelength)
+                    Q_mW_left = calculate_Q(missing_wedge_x_left,delta_y,dist,k_in,wavelength)
+                    Q_mW_right = calculate_Q(missing_wedge_x_right,delta_y,dist,k_in,wavelength)
+                    Q = calculate_Q(delta_x_left,delta_y,dist,k_in,wavelength)
                     x_k0 = np.sqrt(np.power(Q[0],2)+np.power(Q[1],2))*np.sign(Q[1])
                     y_k0 = Q[2]
                     x_k1 = np.sqrt(np.power(Q_mW_left[0],2)+np.power(Q_mW_left[1],2))*np.sign(Q_mW_left[1])
@@ -215,12 +216,11 @@ def calibrate_q_scale_missing_wedge(data,DB,dist,px_size,alpha,wavelength):
                 except:
                     pass
 
-                Q = calculate_Q(alpha,delta_x_left,delta_y_down,dist,k_in,wavelength)
+                Q = calculate_Q(delta_x_left,delta_y_down,dist,k_in,wavelength)
                 x_values[index]=np.sqrt(np.power(Q[0],2)+np.power(Q[1],2))*np.sign(Q[1])
                 y_values[index]=Q[2]
 
     return x_values,y_values,new_data
-
 
 def get_filepair(folder,start):
     """"
@@ -251,14 +251,14 @@ def merge_images(files):
             i1 = -1
             i2 = -1
             if index[0] < shape[0]:
-                i1 = data1[index]
+                i1 = float(data1[index])
             if index[0] + delta_y >= 0:
-                i2 = data2[(index[0]+delta_y,index[1])]
+                i2 = float(data2[(index[0]+delta_y,index[1])])
 
             if i1*i2 >= 0:
-                x[...] = i1+i2
+                x[...] = (i1 + i2)/2
             else:
-                x[...] = max(i1,i2)*2
+                x[...] = max(i1, i2)
 
     new_data = new_data[:round(DB1[1])+1,:]
     return DB1, new_data
@@ -280,7 +280,7 @@ def plot_2d(ax,x_values,y_values,data,vmin=1,vmax=1e3,colorbar=True,xlim=None,yl
     if colorbar:
         plt.gcf().colorbar(quadmesh,ax=ax,shrink=0.6,label="Intensity [cts.]")
 
-def get_qz_qy_cuts(qz,qy,data,DB,dqz=5,dqy=5,ax1=None,ax2=None):
+def get_qz_qy_cuts(qz,qy,data,DB,dqz=5,dqy=5):
     x_pos = int(DB[0])
     y_pos = int(DB[1])
     qz = qz[1:,:-1]
@@ -291,10 +291,6 @@ def get_qz_qy_cuts(qz,qy,data,DB,dqz=5,dqy=5,ax1=None,ax2=None):
     data_qz =  np.transpose(data)[x_pos-int(dqy/2):x_pos+int(dqy/2)+int(dqy%2)][:]
     data_qy =  data[y_pos-int(dqz/2):y_pos+int(dqz/2)+int(dqz%2)][:]
 
-    if type(ax1) != type(None):
-        pass
-    if type(ax1) != type(None):
-        pass
     data_qz = np.sum(data_qz,0)
     data_qy = np.sum(data_qy,0)
 
@@ -337,6 +333,36 @@ def prepare_for_writing(y_values,x_values,data):
             y_high.append(y_values[high_index])
             x_high.append(x_values[high_index])
     return np.array(y_low),np.array(y_high),np.array(x_low),np.array(x_high),np.array(new_data)
+
+def create_folders(outdir,specifier=""):
+    """
+    Creates a folder named the current date + an optional specifier
+
+    """
+    dirname = f"{date.today()}{specifier}"
+    if not isdir(join(outdir,dirname)):
+        makedirs(join(outdir,dirname))
+
+    return join(outdir,dirname)
+
+def make_mp4(path, video_path,nbrs):
+    images = []
+    for i in nbrs:
+        images.append(join(path, "{:05d}_overview_plots.png".format(i)))
+    frame = cv2.imread(images[0])
+    height, width, channels = frame.shape
+
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(join(video_path, "full_rotation.mp4"), fourcc, 2.0, (width, height))
+
+    for ctr, image in enumerate(images):
+        if ctr % 10 == 0:
+            print(ctr)
+        frame = cv2.imread(image)
+        out.write(frame)
+
+    out.release()
+    cv2.destroyAllWindows()
 
 def main():
     pass
